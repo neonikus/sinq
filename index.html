@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 Pulse Graph</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Подключаем библиотеку для графиков -->
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f9; }
+        #status { margin: 10px; color: #666; }
+        button { padding: 15px 30px; font-size: 18px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 8px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>ESP32 Pulse Monitor</h2>
+    <button id="connectBtn">Connect to ESP32</button>
+    <p id="status">Status: Disconnected</p>
+    <canvas id="pulseChart"></canvas>
+</div>
+
+<script>
+    const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+    const TX_CHARACTERISTIC_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+    let bleDevice;
+    let bleCharacteristic;
+    const connectBtn = document.getElementById('connectBtn');
+    const statusText = document.getElementById('status');
+
+    // Настройка графика
+    const ctx = document.getElementById('pulseChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Heart Rate (BPM)',
+                data: [],
+                borderColor: '#ff4d4d',
+                tension: 0.4,
+                fill: false
+            }]
+        },
+        options: {
+            scales: { y: { min: 40, max: 120 } }
+        }
+    });
+
+    connectBtn.addEventListener('click', async () => {
+        try {
+            statusText.innerText = "Status: Searching...";
+            
+            // Ищем устройство с нашим именем
+            bleDevice = await navigator.bluetooth.requestDevice({
+                filters: [{ name: 'ESP32_Pulse_Sim' }],
+                optionalServices: [SERVICE_UUID]
+            });
+
+            const server = await bleDevice.gatt.connect();
+            const service = await server.getPrimaryService(SERVICE_UUID);
+            bleCharacteristic = await service.getCharacteristic(TX_CHARACTERISTIC_UUID);
+
+            // Подписываемся на уведомления (Subscribe)
+            await bleCharacteristic.startNotifications();
+            bleCharacteristic.addEventListener('characteristicvaluechanged', handleData);
+
+            statusText.innerText = "Status: Connected!";
+            connectBtn.style.display = "none";
+
+        } catch (error) {
+            console.log(error);
+            statusText.innerText = "Status: Error! " + error;
+        }
+    });
+
+    function handleData(event) {
+        // Получаем строку "BPM: 75"
+        const decoder = new TextDecoder('utf-8');
+        const rawData = decoder.decode(event.target.value);
+        
+        // Вырезаем число из строки
+        const bpm = parseInt(rawData.replace("BPM: ", ""));
+
+        if (!isNaN(bpm)) {
+            updateChart(bpm);
+        }
+    }
+
+    function updateChart(value) {
+        const now = new Date().toLocaleTimeString();
+        
+        // Добавляем данные в график
+        chart.data.labels.push(now);
+        chart.data.datasets[0].data.push(value);
+
+        // Ограничиваем количество точек на экране (последние 20)
+        if (chart.data.labels.length > 20) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+        }
+
+        chart.update();
+    }
+</script>
+</body>
+</html>
