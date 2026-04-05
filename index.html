@@ -1,1 +1,84 @@
-123
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 Pulse</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px; background: #fafafa; }
+        .box { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        button { padding: 15px 25px; font-size: 18px; font-weight: bold; background: #007bff; color: white; border: none; border-radius: 10px; cursor: pointer; }
+        #status { color: #888; font-size: 14px; margin-top: 10px; }
+        canvas { width: 100%; height: 200px; background: #fff1f1; border-radius: 10px; margin-top: 20px; border: 1px solid #eee; }
+        h1 { font-size: 48px; margin: 10px 0; color: #ff4d4d; }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <button id="btn">ПОДКЛЮЧИТЬ ПЛАТУ</button>
+    <div id="status">Нажми кнопку выше</div>
+    <h1 id="bpmDisplay">--</h1>
+    <canvas id="graph"></canvas>
+</div>
+
+<script>
+    const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+    const TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+    let points = []; // Данные для графика
+    const canvas = document.getElementById('graph');
+    const ctx = canvas.getContext('2d');
+
+    // Кнопка подключения
+    document.getElementById('btn').addEventListener('click', async () => {
+        try {
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [{ name: 'ESP32_Pulse_Sim' }],
+                optionalServices: [SERVICE_UUID]
+            });
+            
+            document.getElementById('status').innerText = "Подключаюсь...";
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService(SERVICE_UUID);
+            const char = await service.getCharacteristic(TX_UUID);
+
+            await char.startNotifications();
+            char.addEventListener('characteristicvaluechanged', (e) => {
+                const raw = new TextDecoder().decode(e.target.value);
+                const val = parseInt(raw.replace("BPM: ", ""));
+                if (!isNaN(val)) {
+                    document.getElementById('bpmDisplay').innerText = val;
+                    draw(val); // Рисуем точку
+                }
+            });
+
+            document.getElementById('status').innerText = "Связь установлена!";
+            document.getElementById('btn').style.display = "none";
+        } catch (err) {
+            document.getElementById('status').innerText = "Ошибка: " + err;
+        }
+    });
+
+    // Функция рисования графика "на коленке"
+    function draw(val) {
+        points.push(val);
+        if (points.length > 50) points.shift(); // Оставляем только 50 точек
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#ff4d4d";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        
+        const step = canvas.width / 50;
+        for (let i = 0; i < points.length; i++) {
+            // Масштабируем BPM (60-100) под высоту канваса (200px)
+            const y = canvas.height - ((points[i] - 50) * 4); 
+            const x = i * step;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+</script>
+</body>
+</html>
