@@ -32,10 +32,11 @@
     // Кнопка подключения
     document.getElementById('btn').addEventListener('click', async () => {
         try {
-            const device = await navigator.bluetooth.requestDevice({
-                filters: [{ name: 'ESP32_Pulse_Sim' }],
-                optionalServices: [SERVICE_UUID]
-            });
+const device = await navigator.bluetooth.requestDevice({
+    acceptAllDevices: true, // Искать всё подряд
+    optionalServices: [SERVICE_UUID]
+});
+
             
             document.getElementById('status').innerText = "Подключаюсь...";
             const server = await device.gatt.connect();
